@@ -9,9 +9,50 @@ datasource db {
 
 
 model User{
-id         String       @id       @default(uuid())
-email      String       @unique
-password   String       
+   id         String       @id       @default(uuid())
+   email      String       @unique
+   password   String       
+   project    Project[]
+}
+
+model Project{
+  id              String        @id       @default(uuid())
+  name            String
+  description     String?
+  userId          String
+  user            User        @relation(fields: [userId],references: [id])
+  inputVideoUrl   String
+  outputVideoUrl  String
+  operations      Operation[]
+  status          ProjectStatus  @default(Pending)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 }
 
 
+model Operation{
+  id            String        @id      @default(uuid())
+  projectId     String
+  project       Project     @relation(fields: [projectId],references: [id])
+  type          OperationType
+  parameters    Json
+  order         Int
+  createdAt     DateTime   @default(now())
+}
+
+
+
+enum ProjectStatus{
+  Pending
+  Processing
+  Completes
+  Failed
+}
+
+enum OperationType{
+  Trim
+  Add_subtitle
+  Change_audio
+  Add_text
+  Add_image
+}
