@@ -1,6 +1,7 @@
 import { Request, Router } from "express";
 import { authMiddleware } from "../authMiddleware";
-import { upload } from "./upload";
+import { upload, uploadToS3 } from "./upload";
+import ffmpeg = require("ffmpeg");
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.use(authMiddleware);
 router.post(
   "/api/video/upload",
   upload.single("video"),
-  (req: Request, res) => {
+  async (req: Request, res) => {
     const userId = req.userId;
     if (!userId) {
       res.status(401).json({
@@ -17,17 +18,25 @@ router.post(
       });
       return;
     }
-    const file = req.file;
-    if (!file) {
-      res.status(400).json({
-        message: "Please provide a correct file",
-      });
-      return;
-    }
 
-    res.json({
-      message: "File uploaded successfully",
-    });
+    try {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({
+          message: "Please provide a correct file",
+        });
+        return;
+      }
+      const response = uploadToS3(file);
+      console.log(response);
+      res.json({
+        message: "Video has been uploaded successfully",
+      });
+    } catch (error) {
+      res.json({
+        message: error,
+      });
+    }
   }
 );
 

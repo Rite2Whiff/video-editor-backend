@@ -1,4 +1,4 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
 import multer from "multer";
 import multerS3 from "multer-s3";
@@ -25,3 +25,15 @@ export const upload = multer({
     },
   }),
 });
+
+export const uploadToS3 = (file: Express.Multer.File) => {
+  const params = {
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: `videos/${Date.now()}_${file.originalname}`,
+    Body: file.buffer,
+    ContentType: file.mimetype,
+  };
+
+  const data = new PutObjectCommand(params);
+  return data;
+};
