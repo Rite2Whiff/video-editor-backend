@@ -1,7 +1,12 @@
 import { Request, Router } from "express";
 import { authMiddleware } from "../authMiddleware";
-import { upload, uploadToS3 } from "./upload";
-import ffmpeg = require("ffmpeg");
+import { upload, downloadVideo, extractMetadata } from "./upload";
+import { S3File } from "../interface";
+import fs from "fs";
+import ffmpeg from "fluent-ffmpeg";
+import path from "path";
+import { prismaClient } from "../prismaClient";
+import { FfprobeMetadata } from "../interface";
 
 const router = Router();
 
@@ -11,6 +16,7 @@ router.post(
   "/api/video/upload",
   upload.single("video"),
   async (req: Request, res) => {
+    let videoMetadata: FfprobeMetadata;
     const userId = req.userId;
     if (!userId) {
       res.status(401).json({
@@ -20,16 +26,29 @@ router.post(
     }
 
     try {
-      const file = req.file;
+      const file = req.file as S3File;
+
       if (!file) {
         res.status(400).json({
           message: "Please provide a correct file",
         });
         return;
       }
-      const response = uploadToS3(file);
-      console.log(response);
+      const videoUrl = file.location;
+      const tempPath = path.join(__dirname, "temp", `${Date.now()}_video`);
+      await downloadVideo(videoUrl, tempPath);
+      const metadata = await extractMetadata(tempPath);
+      const video = await prismaClient.video.create({
+        data: {
+          userId: userId,
+          name: file.originalname,
+          duration: metadata.format.duration as number,
+          size: metadata.format.size as number,
+          originalPath: file.location,
+        },
+      });
       res.json({
+        videoId: video.id,
         message: "Video has been uploaded successfully",
       });
     } catch (error) {

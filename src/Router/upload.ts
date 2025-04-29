@@ -1,8 +1,13 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
 import multer from "multer";
 import multerS3 from "multer-s3";
 import path from "path";
+import fs, { PathLike } from "fs";
+import http from "http";
+import https from "https";
+import ffmpeg from "fluent-ffmpeg";
+
 dotenv.config();
 
 const s3Client = new S3Client({
@@ -26,14 +31,37 @@ export const upload = multer({
   }),
 });
 
-export const uploadToS3 = (file: Express.Multer.File) => {
-  const params = {
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Key: `videos/${Date.now()}_${file.originalname}`,
-    Body: file.buffer,
-    ContentType: file.mimetype,
-  };
+export function downloadVideo(url: string, destination: PathLike) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destination);
+    const handler = url.startsWith("https") ? https : http;
+    handler
+      .get(url, (response) => {
+        response.pipe(file);
+        file.on("finish", () => {
+          file.close(() => resolve(destination));
+          console.log("your video has downloaded");
+        });
+      })
+      .on("error", (err) => {
+        fs.unlink(destination, () => reject(err));
+        console.log(err);
+      });
+  });
+}
 
-  const data = new PutObjectCommand(params);
-  return data;
-};
+export function extractMetadata(path: string): Promise<ffmpeg.FfprobeData> {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(path, (err, metadata) => {
+      fs.unlinkSync(path);
+
+      if (err) {
+        console.error(err);
+        reject(err);
+        return;
+      }
+
+      resolve(metadata);
+    });
+  });
+}
