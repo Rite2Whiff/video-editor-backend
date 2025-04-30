@@ -1,12 +1,15 @@
 import { Request, Router } from "express";
 import { authMiddleware } from "../authMiddleware";
-import { upload, downloadVideo, extractMetadata } from "./upload";
+import {
+  upload,
+  downloadVideo,
+  extractMetadata,
+  trimVideo,
+  uploadTrimmedVideo,
+} from "../upload";
 import { S3File } from "../interface";
-import fs from "fs";
-import ffmpeg from "fluent-ffmpeg";
 import path from "path";
 import { prismaClient } from "../prismaClient";
-import { FfprobeMetadata } from "../interface";
 
 const router = Router();
 
@@ -16,7 +19,6 @@ router.post(
   "/api/video/upload",
   upload.single("video"),
   async (req: Request, res) => {
-    let videoMetadata: FfprobeMetadata;
     const userId = req.userId;
     if (!userId) {
       res.status(401).json({
@@ -59,7 +61,44 @@ router.post(
   }
 );
 
-router.post("/api/video/:id/trim", (req, res) => {});
+router.post("/api/video/:id/trim", async (req: Request, res) => {
+  const userId = req.userId;
+  if (!userId) {
+    res.status(401).json({
+      message: "Please login first",
+    });
+    return;
+  }
+  const { startTime, endTime } = req.body;
+  const videoId = req.params.id;
+  const video = await prismaClient.video.findFirst({
+    where: {
+      userId: userId,
+      id: videoId,
+    },
+  });
+  const s3Key = `videos/trimmed/${videoId}-trimmed.mp4`;
+  const inputPath = path.join(__dirname, "temp", `${videoId}-input.mp4`);
+  await downloadVideo(video?.originalPath as string, inputPath);
+  const outputPath = path.join(__dirname, "temp", `${videoId}-trimmed.mp4`);
+  await trimVideo(inputPath, outputPath, startTime, endTime);
+  console.log("Your video has been trimmed");
+  const response = await uploadTrimmedVideo(outputPath, s3Key);
+  console.log("your trimmed video has been uploaded");
+  await prismaClient.video.update({
+    data: {
+      trimmedPath: response,
+    },
+    where: {
+      userId: userId,
+      id: videoId,
+    },
+  });
+  res.status(200).json({
+    message: "Video has been successfully trimmed",
+    videoUrl: response,
+  });
+});
 
 router.post("api/video/:id/subtitles", (req, res) => {});
 

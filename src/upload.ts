@@ -1,4 +1,4 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { PutObjectCommand, S3Client, S3KeyFilter } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
 import multer from "multer";
 import multerS3 from "multer-s3";
@@ -7,6 +7,7 @@ import fs, { PathLike } from "fs";
 import http from "http";
 import https from "https";
 import ffmpeg from "fluent-ffmpeg";
+import mime from "mime-types";
 
 dotenv.config();
 
@@ -63,5 +64,37 @@ export function extractMetadata(path: string): Promise<ffmpeg.FfprobeData> {
 
       resolve(metadata);
     });
+  });
+}
+
+export async function uploadTrimmedVideo(filePath: string, s3Key: string) {
+  const fileStream = fs.createReadStream(filePath);
+
+  const uploadParams = {
+    Bucket: "video-editor-backend",
+    Key: s3Key,
+    Body: fileStream,
+    ContentType: "video/mp4",
+    ACL: "public-read" as const,
+  };
+
+  await s3Client.send(new PutObjectCommand(uploadParams));
+  return `https://${uploadParams.Bucket}.s3.ap-south-1.amazonaws.com/${s3Key}`;
+}
+
+export async function trimVideo(
+  inputPath: string,
+  outputPath: string,
+  startTime: number,
+  endTime: number
+) {
+  await new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .setStartTime(startTime)
+      .setDuration(endTime - startTime)
+      .output(outputPath)
+      .on("end", resolve)
+      .on("error", reject)
+      .run();
   });
 }
