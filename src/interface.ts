@@ -24,3 +24,16 @@ export interface FfprobeMetadata {
     tags?: Record<string, string>;
   };
 }
+
+interface Subtitle {
+  start: string; // e.g., "00:00:01"
+  end: string; // e.g., "00:00:03"
+  text: string; // e.g., "Hello!"
+}
+
+export interface SubtitleRequest {
+  subTitles: Subtitle[];
+  start: number;
+  end: number;
+  text: string;
+}

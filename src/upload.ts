@@ -8,6 +8,7 @@ import http from "http";
 import https from "https";
 import ffmpeg from "fluent-ffmpeg";
 import mime from "mime-types";
+import { SubtitleRequest } from "./interface";
 
 dotenv.config();
 
@@ -67,7 +68,7 @@ export function extractMetadata(path: string): Promise<ffmpeg.FfprobeData> {
   });
 }
 
-export async function uploadTrimmedVideo(filePath: string, s3Key: string) {
+export async function uploadUpdatedVideo(filePath: string, s3Key: string) {
   const fileStream = fs.createReadStream(filePath);
 
   const uploadParams = {
@@ -97,4 +98,32 @@ export async function trimVideo(
       .on("error", reject)
       .run();
   });
+}
+
+export function jsonToSrt(subtitles: SubtitleRequest[]) {
+  return subtitles
+    .map((subtitle, index) => {
+      const startTime = formatTime(subtitle.start);
+      const endTime = formatTime(subtitle.end);
+
+      return `${index + 1}\n${startTime} --> ${endTime}\n${subtitle.text}\n`;
+    })
+    .join("\n");
+}
+
+function formatTime(time: number) {
+  const date = new Date(time * 1000);
+  const hours = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
+  const seconds = date.getUTCSeconds();
+  const milliseconds = date.getMilliseconds();
+
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)},${pad(
+    milliseconds,
+    3
+  )}`;
+}
+
+function pad(num: number, len = 2) {
+  return num.toString().padStart(len, "0");
 }

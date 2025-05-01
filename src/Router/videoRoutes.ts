@@ -5,11 +5,15 @@ import {
   downloadVideo,
   extractMetadata,
   trimVideo,
-  uploadTrimmedVideo,
+  uploadUpdatedVideo,
+  jsonToSrt,
 } from "../upload";
 import { S3File } from "../interface";
 import path from "path";
 import { prismaClient } from "../prismaClient";
+
+import fs from "fs";
+import { addSubtitleJob } from "../jobs/subTitleJob";
 
 const router = Router();
 
@@ -83,7 +87,7 @@ router.post("/api/video/:id/trim", async (req: Request, res) => {
   const outputPath = path.join(__dirname, "temp", `${videoId}-trimmed.mp4`);
   await trimVideo(inputPath, outputPath, startTime, endTime);
   console.log("Your video has been trimmed");
-  const response = await uploadTrimmedVideo(outputPath, s3Key);
+  const response = await uploadUpdatedVideo(outputPath, s3Key);
   console.log("your trimmed video has been uploaded");
   await prismaClient.video.update({
     data: {
@@ -100,7 +104,47 @@ router.post("/api/video/:id/trim", async (req: Request, res) => {
   });
 });
 
-router.post("api/video/:id/subtitles", (req, res) => {});
+router.post("/api/video/:id/subtitles", async (req: Request, res) => {
+  const userId = req.userId;
+  const videoId = req.params.id;
+  const subtitles = req.body.subTitles;
+  console.log(subtitles);
+
+  if (!userId) {
+    res.status(401).json({
+      message: "Please login first",
+    });
+    return;
+  }
+
+  const video = await prismaClient.video.findFirst({
+    where: {
+      userId: userId,
+      id: videoId,
+    },
+  });
+
+  try {
+    const s3Key = `videos/subtitles/${videoId}-subtitles.mp4`;
+    const inputPath = path.join(__dirname, "temp", `${videoId}-input.mp4`);
+    await downloadVideo(video?.originalPath as string, inputPath);
+    const srtContent = jsonToSrt(subtitles);
+    const subtitlesPath = path.join(__dirname, "temp", `${videoId}-input.srt`);
+    fs.writeFileSync(subtitlesPath, srtContent, "utf-8");
+    const outputPath = path.join(__dirname, "temp", `${videoId}-output.mp4`);
+    await addSubtitleJob(inputPath, subtitlesPath, outputPath);
+    const response = await uploadUpdatedVideo(outputPath, s3Key);
+    res.json({
+      message: "subtitle added to the video",
+      videoUrl: response,
+    });
+  } catch (error) {
+    console.log(error);
+    res.json({
+      message: "Error",
+    });
+  }
+});
 
 router.post("api/video/:id/render", (req, res) => {});
 
